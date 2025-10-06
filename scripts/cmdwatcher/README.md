@@ -11,6 +11,7 @@ cmdwatcher
 输出
 - JSON Lines 到仓库根目录的 `log/commands.jsonl`：
   - `session_start`：会话开始标记，字段含 `sid` 用于关联
+  - `session_stop`：会话结束，附带退出码、最后工作目录等
   - `exec`：每条命令记录；若存在 `sid` 字段，与会话关联
 - 可通过 `FIREWALLBOT_LOG_DIR`/`FIREWALLBOT_CMD_LOG` 环境变量覆盖目录或文件名。
 - 默认忽略 shell 自启动的 `. "$HOME/.cargo/env"` 等噪声命令，可在 `profile.sh` 的 `fwbot__should_ignore_command` 中扩展模式。

@@ -88,6 +88,49 @@ fwbot__maybe_session_start() {
     "$epoch_iso" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "${PPID:-0}" "$$" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
 }
 
+fwbot__log_session_stop() {
+  local rc=$?
+  if [[ -n "${FIREWALLBOT_SESSION_STOPPED:-}" ]]; then
+    return 0
+  fi
+  export FIREWALLBOT_SESSION_STOPPED=1
+  if [[ -z "${FIREWALLBOT_SESSION_ID:-}" ]]; then
+    return 0
+  fi
+
+  local epoch_iso user uid gid cwd host tty ip port
+  epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  user=${USER:-$(id -un)}
+  uid=${UID:-$(id -u)}
+  gid=${GID:-$(id -g)}
+  cwd=${PWD}
+  host=$(hostname -s 2>/dev/null || hostname)
+  tty=$(tty 2>/dev/null || echo "unknown")
+  if [[ -n "$SSH_CONNECTION" ]]; then
+    ip=$(awk '{print $1}' <<<"$SSH_CONNECTION"); port=$(awk '{print $2}' <<<"$SSH_CONNECTION")
+  else
+    ip="local"; port=""
+  fi
+
+  printf '{"type":"session_stop","ts":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"host":"%s"}\n' \
+    "$epoch_iso" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+}
+
+fwbot__install_exit_trap() {
+  local existing trap_body
+  existing=$(trap -p EXIT 2>/dev/null)
+  trap_body='fwbot__log_session_stop'
+  if [[ -n "$existing" ]]; then
+    existing=${existing#trap -- '}
+    existing=${existing%' EXIT}
+    if [[ "$existing" == *fwbot__log_session_stop* ]]; then
+      return 0
+    fi
+    trap_body+="; ${existing}"
+  fi
+  trap "$trap_body" EXIT
+}
+
 fwbot_log_last_command() {
   local rc=$?
   [[ $__FWBOT_LOGGING -eq 1 ]] && return 0
@@ -136,3 +179,4 @@ fi
 
 # Trigger session_start once per interactive shell
 fwbot__maybe_session_start
+fwbot__install_exit_trap
