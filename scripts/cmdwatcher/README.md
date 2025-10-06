@@ -2,13 +2,16 @@ cmdwatcher
 
 功能
 - 记录交互式 Bash 会话中执行的每条命令（含时间、用户、IP、TTY、CWD、退出码、完整命令行）。
+- 新会话开始时写入一条 `session_start` 事件（带会话 `sid`、pid/ppid 等），便于串联后续命令。
 
 实现机制
 - 通过 /etc/profile.d 注入一个 profile 钩子（profile.sh），为登录 shell 配置 DEBUG trap 和 PROMPT_COMMAND。
 - 新打开的 Bash 登录会话会自动生效；已打开的会话不会补录。
 
 输出
-- JSON Lines 到仓库根目录的 `log/commands.jsonl`。
+- JSON Lines 到仓库根目录的 `log/commands.jsonl`：
+  - `session_start`：会话开始标记，字段含 `sid` 用于关联
+  - `exec`：每条命令记录；若存在 `sid` 字段，与会话关联
 - 可通过 `FIREWALLBOT_LOG_DIR`/`FIREWALLBOT_CMD_LOG` 环境变量覆盖目录或文件名。
 
 安装与管理
@@ -22,4 +25,3 @@ cmdwatcher
 
 隐私与合规
 - 该模块会记录完整命令行参数，可能包含敏感信息。请在符合组织合规的前提下启用，必要时进行脱敏或限制范围。
-

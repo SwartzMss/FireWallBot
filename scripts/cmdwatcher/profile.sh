@@ -35,6 +35,35 @@ fwbot__json_escape() {
   printf '%s' "$s"
 }
 
+# Emit one-time session_start when a new interactive shell begins
+fwbot__maybe_session_start() {
+  if [[ -n "${FIREWALLBOT_SESSION_STARTED:-}" ]]; then
+    return 0
+  fi
+  # Generate a lightweight session id and export it so subshells inherit
+  local rnd ts
+  ts=$(date -u +%s)
+  rnd=$(( (RANDOM<<16) ^ RANDOM ))
+  export FIREWALLBOT_SESSION_ID="${ts}-${PPID:-0}-${rnd}"
+  export FIREWALLBOT_SESSION_STARTED=1
+
+  local epoch_iso user uid gid cwd host tty ip port
+  epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  user=${USER:-$(id -un)}
+  uid=${UID:-$(id -u)}
+  gid=${GID:-$(id -g)}
+  cwd=${PWD}
+  host=$(hostname -s 2>/dev/null || hostname)
+  tty=$(tty 2>/dev/null || echo "unknown")
+  if [[ -n "$SSH_CONNECTION" ]]; then
+    ip=$(awk '{print $1}' <<<"$SSH_CONNECTION"); port=$(awk '{print $2}' <<<"$SSH_CONNECTION")
+  else
+    ip="local"; port=""
+  fi
+  printf '{"type":"session_start","ts":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","ppid":%s,"pid":%s,"host":"%s"}\n' \
+    "$epoch_iso" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "${PPID:-0}" "$$" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+}
+
 fwbot_log_last_command() {
   local rc=$?
   [[ $__FWBOT_LOGGING -eq 1 ]] && return 0
@@ -60,8 +89,13 @@ fwbot_log_last_command() {
     ip="local"; port=""
   fi
   local cmd_json; cmd_json=$(fwbot__json_escape "$cmd")
-  printf '{"type":"exec","ts":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
-    "$epoch_iso" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+  if [[ -n "${FIREWALLBOT_SESSION_ID:-}" ]]; then
+    printf '{"type":"exec","ts":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
+      "$epoch_iso" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+  else
+    printf '{"type":"exec","ts":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
+      "$epoch_iso" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+  fi
   __FWBOT_LOGGING=0
 }
 
@@ -72,3 +106,5 @@ else
   PROMPT_COMMAND="fwbot_log_last_command"
 fi
 
+# Trigger session_start once per interactive shell
+fwbot__maybe_session_start
