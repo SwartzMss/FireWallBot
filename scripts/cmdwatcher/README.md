@@ -13,11 +13,13 @@ cmdwatcher
   - `session_start`：会话开始标记，字段含 `sid` 用于关联
   - `exec`：每条命令记录；若存在 `sid` 字段，与会话关联
 - 可通过 `FIREWALLBOT_LOG_DIR`/`FIREWALLBOT_CMD_LOG` 环境变量覆盖目录或文件名。
+- 默认忽略 shell 自启动的 `. "$HOME/.cargo/env"` 等噪声命令，可在 `profile.sh` 的 `fwbot__should_ignore_command` 中扩展模式。
 
 安装与管理
 - 安装（需要 root）：`sudo bash ./service.sh install cmdwatcher`
 - 查看状态：`bash ./service.sh status cmdwatcher`
 - 卸载（需要 root）：`sudo bash ./service.sh uninstall cmdwatcher`
+- 修改脚本后需重新打开登录型 shell（或执行 `bash -l`）以加载最新钩子。
 
 使用提示（WSL/常规 Bash）
 - 登录 shell（例如新开 WSL 终端或执行 `bash -l`）会加载 `/etc/profile.d/*.sh`，命令记录生效。
