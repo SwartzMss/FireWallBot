@@ -1,4 +1,4 @@
-LoginWatcher
+loginwatcher
 
 功能
 - 监听 sshd 登录事件（成功/失败），记录时间、用户、来源 IP、方式。
@@ -12,7 +12,6 @@ LoginWatcher
 - 可通过环境变量 `FIREWALLBOT_LOG_DIR` 覆盖输出目录
 
 部署（借助仓库根的 service.sh）
-- 安装并启动：`sudo bash ./service.sh install LoginWatcher`
-- 查看状态：`bash ./service.sh status LoginWatcher`
-- 卸载：`sudo bash ./service.sh uninstall LoginWatcher`
-
+- 安装并启动：`sudo bash ./service.sh install loginwatcher`
+- 查看状态：`bash ./service.sh status loginwatcher`
+- 卸载：`sudo bash ./service.sh uninstall loginwatcher`

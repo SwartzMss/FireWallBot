@@ -1,12 +1,12 @@
 [Unit]
-Description=FireWallBot LoginWatcher
+Description=FireWallBot loginwatcher
 After=network.target
 
 [Service]
 Type=simple
 WorkingDirectory=@REPO@
 Environment=FIREWALLBOT_LOG_DIR=@REPO@/log
-ExecStart=/usr/bin/env python3 scripts/LoginWatcher/watcher.py
+ExecStart=/usr/bin/env python3 scripts/loginwatcher/watcher.py
 Restart=always
 RestartSec=2s
 User=root
@@ -14,4 +14,3 @@ Group=root
 
 [Install]
 WantedBy=multi-user.target
-
