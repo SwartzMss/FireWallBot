@@ -48,17 +48,11 @@ def _write_jsonl(obj: dict) -> None:
 
 def _from_journald() -> int:
     """Follow journald for sshd and parse events. Returns exit code or raises."""
-    cmd = [
-        "journalctl",
-        "-u",
-        "sshd",
-        "-o",
-        "json",
-        "-n",
-        "0",
-        "-f",
-        "--no-pager",
-    ]
+    units_env = os.environ.get("FIREWALLBOT_JOURNAL_UNITS", "sshd ssh").split()
+    unit_args = []
+    for u in units_env:
+        unit_args += ["-u", u]
+    cmd = ["journalctl", *unit_args, "-o", "json", "-n", "0", "-f", "--no-pager"]
     try:
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
     except FileNotFoundError:
@@ -119,8 +113,14 @@ def _from_journald() -> int:
 
 
 def _from_auth_log() -> int:
-    auth_path = os.environ.get("FIREWALLBOT_AUTH_LOG", "/var/log/auth.log")
-    if not os.path.exists(auth_path):
+    auth_path = os.environ.get("FIREWALLBOT_AUTH_LOG", "").strip()
+    if not auth_path:
+        # Try common defaults
+        for p in ("/var/log/auth.log", "/var/log/secure"):
+            if os.path.exists(p):
+                auth_path = p
+                break
+    if not auth_path or not os.path.exists(auth_path):
         return 2
     cmd = ["tail", "-n", "0", "-F", auth_path]
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, bufsize=1)
@@ -171,4 +171,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
-
