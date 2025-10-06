@@ -6,8 +6,9 @@
 #   bash ./service.sh uninstall [module ...|all]
 #   bash ./service.sh list
 #
-# Modules live under scripts/<ModuleName>/ with a <ModuleName>.service.tmpl.
-# Installed unit name will be firewallbot-<modulename-lower>.service
+# Modules live under scripts/<module>/
+# - Service module: <module>.service.tmpl -> installs firewallbot-<module>.service
+# - Profile module: profile.sh -> installs /etc/profile.d/99-firewallbot-<module>.sh
 
 set -euo pipefail
 
@@ -25,15 +26,13 @@ require_root() {
 
 discover_modules() {
   shopt -s nullglob
-  local files=("${MODULES_DIR}"/*/*.service.tmpl)
+  local services=("${MODULES_DIR}"/*/*.service.tmpl)
+  local profiles=("${MODULES_DIR}"/*/profile.sh)
   shopt -u nullglob
   local names=()
-  local f
-  for f in "${files[@]}"; do
-    local d
-    d=$(basename "$(dirname "$f")")
-    names+=("${d}")
-  done
+  local f d
+  for f in "${services[@]}"; do d=$(basename "$(dirname "$f")"); names+=("${d}"); done
+  for f in "${profiles[@]}"; do d=$(basename "$(dirname "$f")"); names+=("${d}"); done
   printf '%s\n' "${names[@]}" | sort -u
 }
 
@@ -58,6 +57,22 @@ module_unit_name() {
   echo "firewallbot-${lower}.service"
 }
 
+module_profile_src() {
+  local mod="$1"
+  echo "${MODULES_DIR}/${mod}/profile.sh"
+}
+
+module_type() {
+  local mod="$1"
+  if [[ -f "$(module_template "$mod")" ]]; then
+    echo service; return
+  fi
+  if [[ -f "$(module_profile_src "$mod")" ]]; then
+    echo profile; return
+  fi
+  echo unknown
+}
+
 cmd_list() {
   local found=0
   while IFS= read -r m; do
@@ -73,21 +88,30 @@ cmd_install() {
   mapfile -t mods < <(resolve_modules "$@")
   (( ${#mods[@]} )) || { echo "No modules to install"; exit 2; }
   for m in "${mods[@]}"; do
-    local src dst unit
-    unit=$(module_unit_name "$m")
-    src=$(module_template "$m")
-    dst="${UNIT_DIR_DST}/${unit}"
-    if [[ ! -f "$src" ]]; then
-      echo "Template not found: $src" >&2; continue
-    fi
-    echo "Installing ${m} -> ${unit}"
-    local tmp
-    tmp=$(mktemp)
-    sed "s#@REPO@#${REPO_ROOT}#g" "$src" >"$tmp"
-    install -m 0644 "$tmp" "$dst"
-    rm -f "$tmp"
-    systemctl daemon-reload
-    systemctl enable --now "$unit"
+    case "$(module_type "$m")" in
+      service)
+        local src dst unit tmp
+        unit=$(module_unit_name "$m")
+        src=$(module_template "$m")
+        dst="${UNIT_DIR_DST}/${unit}"
+        echo "Installing service ${m} -> ${unit}"
+        tmp=$(mktemp)
+        sed "s#@REPO@#${REPO_ROOT}#g" "$src" >"$tmp"
+        install -m 0644 "$tmp" "$dst"
+        rm -f "$tmp"
+        systemctl daemon-reload
+        systemctl enable --now "$unit"
+        ;;
+      profile)
+        local src dest
+        src=$(module_profile_src "$m")
+        dest="/etc/profile.d/99-firewallbot-$(echo "$m" | tr '[:upper:]' '[:lower:]').sh"
+        echo "Installing profile hook ${m} -> ${dest}"
+        if [[ -e "$dest" || -L "$dest" ]]; then rm -f -- "$dest"; fi
+        ln -s "$src" "$dest"
+        ;;
+      *) echo "Skipping unknown module: $m" ;;
+    esac
   done
 }
 
@@ -97,12 +121,23 @@ cmd_uninstall() {
   mapfile -t mods < <(resolve_modules "$@")
   (( ${#mods[@]} )) || { echo "No modules to uninstall"; exit 2; }
   for m in "${mods[@]}"; do
-    local unit dst
-    unit=$(module_unit_name "$m")
-    dst="${UNIT_DIR_DST}/${unit}"
-    echo "Uninstalling ${m} (${unit})"
-    systemctl disable --now "$unit" 2>/dev/null || true
-    rm -f "$dst" || true
+    case "$(module_type "$m")" in
+      service)
+        local unit dst
+        unit=$(module_unit_name "$m")
+        dst="${UNIT_DIR_DST}/${unit}"
+        echo "Uninstalling service ${m} (${unit})"
+        systemctl disable --now "$unit" 2>/dev/null || true
+        rm -f "$dst" || true
+        ;;
+      profile)
+        local dest
+        dest="/etc/profile.d/99-firewallbot-$(echo "$m" | tr '[:upper:]' '[:lower:]').sh"
+        echo "Removing profile hook ${m}"
+        rm -f "$dest" || true
+        ;;
+      *) echo "Skipping unknown module: $m" ;;
+    esac
   done
   systemctl daemon-reload
 }
@@ -112,15 +147,26 @@ cmd_status() {
   mapfile -t mods < <(resolve_modules "$@")
   (( ${#mods[@]} )) || { echo "No modules to query"; exit 2; }
   for m in "${mods[@]}"; do
-    local active enabled unit u
-    u=$(module_unit_name "$m")
-    if systemctl list-unit-files | grep -q "^${u}\\s"; then
-      enabled=$(systemctl is-enabled "$u" 2>/dev/null || echo "unknown")
-    else
-      enabled="not-installed"
-    fi
-    active=$(systemctl is-active "$u" 2>/dev/null || echo "inactive")
-    printf '%-18s unit=%-30s enabled=%-14s active=%s\n' "$m" "$u" "$enabled" "$active"
+    case "$(module_type "$m")" in
+      service)
+        local active enabled u
+        u=$(module_unit_name "$m")
+        if systemctl list-unit-files | grep -q "^${u}\\s"; then
+          enabled=$(systemctl is-enabled "$u" 2>/dev/null || echo "unknown")
+        else
+          enabled="not-installed"
+        fi
+        active=$(systemctl is-active "$u" 2>/dev/null || echo "inactive")
+        printf '%-18s kind=service unit=%-30s enabled=%-14s active=%s\n' "$m" "$u" "$enabled" "$active"
+        ;;
+      profile)
+        local dest state
+        dest="/etc/profile.d/99-firewallbot-$(echo "$m" | tr '[:upper:]' '[:lower:]').sh"
+        if [[ -e "$dest" || -L "$dest" ]]; then state="installed"; else state="not-installed"; fi
+        printf '%-18s kind=profile path=%-44s state=%s\n' "$m" "$dest" "$state"
+        ;;
+      *) printf '%-18s kind=unknown\n' "$m" ;;
+    esac
   done
 }
 
