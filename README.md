@@ -29,10 +29,8 @@
 - 安装并启动（需 root）：`sudo bash ./service.sh install`
 - 查看状态：`bash ./service.sh status`
 - 卸载（需 root）：`sudo bash ./service.sh uninstall`
-- 查看日志：`journalctl -u firewallbot-loginwatcher.service -f`
+- 查看命令日志：`tail -f log/commands.jsonl`
 - 本地事件输出目录：`log/`
-
-注：也可用脚本后台模式（适合临时测试）：`bash ./firewallbot.sh`
 
 ## 使用建议
 

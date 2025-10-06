@@ -257,7 +257,7 @@ Examples:
   sudo bash $0 install            # install all modules under scripts/
   sudo bash $0 uninstall          # uninstall all units
   bash $0 status                  # show status for all units
-  sudo bash $0 install loginwatcher         # operate specific module
+  sudo bash $0 install cmdwatcher           # operate specific module
 EOF
 }
 
