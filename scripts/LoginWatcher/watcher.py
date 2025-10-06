@@ -21,7 +21,7 @@ from pathlib import Path
 
 
 HERE = Path(__file__).resolve().parent
-REPO_ROOT = HERE.parent
+REPO_ROOT = HERE.parent.parent
 DEFAULT_LOG_DIR = Path(os.environ.get("FIREWALLBOT_LOG_DIR", REPO_ROOT / "log"))
 DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
 OUT_FILE = DEFAULT_LOG_DIR / "logins.jsonl"
