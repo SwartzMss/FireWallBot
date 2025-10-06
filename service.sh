@@ -228,14 +228,44 @@ cmd_status() {
   for m in "${mods[@]}"; do
     case "$(module_type "$m")" in
       service)
-        local active enabled u
+        local u unit_path enabled active
+        local enabled_rc=0 active_rc=0
+        local enabled_out="" active_out=""
         u=$(module_unit_name "$m")
-        if systemctl list-unit-files | grep -q "^${u}\\s"; then
-          enabled=$(systemctl is-enabled "$u" 2>/dev/null || echo "unknown")
+        unit_path="${UNIT_DIR_DST}/${u}"
+        enabled="not-installed"
+        active="not-installed"
+        if command -v systemctl >/dev/null 2>&1; then
+          enabled_out=$(systemctl is-enabled "$u" 2>/dev/null) || enabled_rc=$?
+          if [[ -n "$enabled_out" ]]; then
+            enabled="$enabled_out"
+          else
+            case "$enabled_rc" in
+              0) enabled="enabled" ;;
+              1) if [[ -e "$unit_path" ]]; then enabled="disabled"; else enabled="not-installed"; fi ;;
+              3) enabled="static" ;;
+              4) enabled="not-installed" ;;
+              5) enabled="masked" ;;
+              *) if [[ -e "$unit_path" ]]; then enabled="installed"; else enabled="not-installed"; fi ;;
+            esac
+          fi
+          active_out=$(systemctl is-active "$u" 2>/dev/null) || active_rc=$?
+          if [[ -n "$active_out" ]]; then
+            active="$active_out"
+          else
+            case "$active_rc" in
+              0) active="active" ;;
+              3) active="inactive" ;;
+              4) active="not-installed" ;;
+              *) if [[ -e "$unit_path" ]]; then active="unknown"; else active="not-installed"; fi ;;
+            esac
+          fi
         else
-          enabled="not-installed"
+          if [[ -e "$unit_path" ]]; then
+            enabled="installed"
+            active="unknown"
+          fi
         fi
-        active=$(systemctl is-active "$u" 2>/dev/null || echo "inactive")
         printf '%-18s kind=service unit=%-30s enabled=%-14s active=%s\n' "$m" "$u" "$enabled" "$active"
         ;;
       profile)
