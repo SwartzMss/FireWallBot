@@ -28,11 +28,35 @@ __FWBOT_LOGGING=0
 
 fwbot__json_escape() {
   local s=${1//\/\\}
-  s=${s//"/\"}
+  local dq='"' escdq='\\"'
+  s=${s//${dq}/${escdq}}
   s=${s//$'\n'/\\n}
   s=${s//$'\r'/\\r}
   s=${s//$'\t'/\\t}
   printf '%s' "$s"
+}
+
+fwbot__capture_last_command() {
+  local current="$BASH_COMMAND"
+  case "$current" in
+    fwbot_log_last_command*|'') return ;;
+  esac
+  if fwbot__should_ignore_command "$current"; then
+    return
+  fi
+  FWBOT_LAST_CMD="$current"
+}
+
+fwbot__should_ignore_command() {
+  local cmd="$1"
+  case "$cmd" in
+    '. "$HOME/.cargo/env"'|\
+    'source "$HOME/.cargo/env"'|\
+    '. $HOME/.cargo/env'|\
+    'source $HOME/.cargo/env')
+      return 0 ;;
+  esac
+  return 1
 }
 
 # Emit one-time session_start when a new interactive shell begins
@@ -96,12 +120,16 @@ fwbot_log_last_command() {
     printf '{"type":"exec","ts":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
       "$epoch_iso" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
   fi
+  FWBOT_LAST_CMD=''
   __FWBOT_LOGGING=0
 }
 
-trap 'FWBOT_LAST_CMD=$BASH_COMMAND' DEBUG
+trap 'fwbot__capture_last_command' DEBUG
 if [[ -n "$PROMPT_COMMAND" ]]; then
-  PROMPT_COMMAND="fwbot_log_last_command; ${PROMPT_COMMAND}"
+  case ";$PROMPT_COMMAND;" in
+    *";fwbot_log_last_command;"*) ;;
+    *) PROMPT_COMMAND="fwbot_log_last_command; ${PROMPT_COMMAND}" ;;
+  esac
 else
   PROMPT_COMMAND="fwbot_log_last_command"
 fi

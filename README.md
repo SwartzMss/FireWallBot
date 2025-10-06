@@ -29,8 +29,15 @@
 - 安装并启动（需 root）：`sudo bash ./service.sh install`
 - 查看状态：`bash ./service.sh status`
 - 卸载（需 root）：`sudo bash ./service.sh uninstall`
-- 查看命令日志：`tail -f log/commands.jsonl`
 - 本地事件输出目录：`log/`
+
+### 命令审计（cmdwatcher）说明
+
+- `service.sh install` 会把 cmdwatcher 钩子写入 `/etc/profile.d/99-firewallbot-cmdwatcher.sh`，新开的 **登录型** Bash 会自动加载。
+- 重新打开终端或执行 `bash -l` 以启用最新脚本；非登录 shell 若需启用，可在 `~/.bashrc` 末尾手动 `source /etc/profile.d/99-firewallbot-cmdwatcher.sh`。
+- 日志写入 `log/commands.jsonl`（JSON Lines）。默认忽略 shell 自启动的 `. "$HOME/.cargo/env"` 等噪声命令，可在 `scripts/cmdwatcher/profile.sh` 的 `fwbot__should_ignore_command` 中按需扩展。
+- 查看命令日志示例：`tail -f log/commands.jsonl`。
+- 每条记录包含 `type=exec`、`cmd`、工作目录、退出码等字段，可直接被日志系统消费。
 
 ## 使用建议
 
