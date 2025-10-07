@@ -7,16 +7,16 @@ After=network.target
 Type=simple
 User=root
 Group=root
-WorkingDirectory={{REPO_ROOT}}
-ExecStart={{REPO_ROOT}}/scripts/filewatcher/filewatcher.py
+WorkingDirectory=@REPO@
+ExecStart=@REPO@/.venv/filewatcher/bin/python @REPO@/scripts/filewatcher/filewatcher.py
 Restart=always
 RestartSec=5
 StandardOutput=journal
 StandardError=journal
 
 # 环境变量配置
-Environment=FIREWALLBOT_LOG_DIR={{LOG_DIR}}
-Environment=FIREWALLBOT_FILEWATCH_LOG={{LOG_DIR}}/filewatcher.jsonl
+Environment=FIREWALLBOT_LOG_DIR=@REPO@/log
+Environment=FIREWALLBOT_FILEWATCH_LOG=@REPO@/log/filewatcher.jsonl
 Environment=FIREWALLBOT_WATCH_DIRS=/etc/,/root/,/usr/bin/,/usr/sbin/,/var/log/
 Environment=FIREWALLBOT_WATCH_EVENTS=IN_CREATE,IN_MODIFY,IN_DELETE,IN_MOVED_FROM,IN_MOVED_TO,IN_ATTRIB
 Environment=FIREWALLBOT_EXCLUDE_PATTERNS=*.tmp,*.log,*.swp,*.pid
@@ -25,8 +25,8 @@ Environment=FIREWALLBOT_EXCLUDE_PATTERNS=*.tmp,*.log,*.swp,*.pid
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths={{LOG_DIR}}
+ProtectHome=read-only
+ReadWritePaths=@REPO@/log
 
 [Install]
 WantedBy=multi-user.target

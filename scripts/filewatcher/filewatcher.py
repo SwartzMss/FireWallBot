@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import importlib
 import json
 import os
 import pathlib
@@ -10,7 +11,9 @@ import re
 import subprocess
 import sys
 import time
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, Tuple
+
+import shutil
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
 LOG_DIR = pathlib.Path(os.getenv("FIREWALLBOT_LOG_DIR", str(REPO_ROOT / "log")))
@@ -44,6 +47,30 @@ EXCLUDE_PATTERNS = os.getenv("FIREWALLBOT_EXCLUDE_PATTERNS", "*.tmp,*.log,*.swp"
 EXCLUDE_PATTERNS = [p.strip() for p in EXCLUDE_PATTERNS if p.strip()]
 
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+
+class DependencyError(RuntimeError):
+    """Raised when a required dependency is missing."""
+
+
+def log_service_error(message: str, **extra: Dict) -> None:
+    """Emit a structured error message to stderr for journald visibility."""
+    payload = {"ts": iso_local(), "kind": "service_error", "message": message}
+    if extra:
+        payload.update(extra)
+    print(json.dumps(payload, ensure_ascii=False), file=sys.stderr)
+
+
+def dependency_status() -> Tuple[bool, bool]:
+    """Return availability flags for inotify.adapters and fswatch."""
+    try:
+        importlib.import_module("inotify.adapters")
+        inotify_available = True
+    except ModuleNotFoundError:
+        inotify_available = False
+
+    fswatch_available = shutil.which("fswatch") is not None
+    return inotify_available, fswatch_available
 
 
 def iso_local(ts: Optional[float] = None) -> str:
@@ -119,13 +146,13 @@ def monitor_with_inotify() -> None:
     """使用 inotify 监控文件系统"""
     try:
         import inotify.adapters
-    except ImportError:
-        write_event(sys.stderr, {
-            "ts": iso_local(),
-            "kind": "error",
-            "message": "inotify module not available. Install with: pip install inotify"
-        })
-        return
+    except ImportError as exc:
+        log_service_error(
+            "inotify module not available. Install with: pip install inotify",
+            dependency="inotify.adapters",
+            details=str(exc),
+        )
+        raise DependencyError("inotify.adapters not available")
     
     # 验证监控目录
     valid_dirs = []
@@ -209,13 +236,13 @@ def monitor_with_fswatch() -> None:
     try:
         # 检查 fswatch 是否可用
         subprocess.run(["fswatch", "--version"], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        write_event(sys.stderr, {
-            "ts": iso_local(),
-            "kind": "error",
-            "message": "fswatch not available. Install with: brew install fswatch (macOS) or apt install fswatch (Ubuntu)"
-        })
-        return
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        log_service_error(
+            "fswatch not available. Install with: apt install fswatch (Linux) 或 brew install fswatch (macOS)",
+            dependency="fswatch",
+            details=str(exc),
+        )
+        raise DependencyError("fswatch binary not available")
     
     # 构建 fswatch 命令
     cmd = ["fswatch", "-o", "--event-flags"]
@@ -266,28 +293,48 @@ def monitor_with_fswatch() -> None:
 
 def main() -> int:
     """主函数"""
-    print(f"FireWallBot FileWatcher starting...")
+    inotify_available, fswatch_available = dependency_status()
+
+    print("FireWallBot FileWatcher starting...")
     print(f"Watch directories: {WATCH_DIRS}")
     print(f"Watch events: {WATCH_EVENTS}")
     print(f"Exclude patterns: {EXCLUDE_PATTERNS}")
     print(f"Log file: {LOG_FILE}")
-    
+    print(
+        f"Dependency status -> inotify: {'ok' if inotify_available else 'missing'}, "
+        f"fswatch: {'ok' if fswatch_available else 'missing'}"
+    )
+
+    if not inotify_available and not fswatch_available:
+        log_service_error(
+            "缺少 inotify.adapters 模块和 fswatch 工具，请安装至少一个依赖后重试",
+            dependency="inotify.adapters,fswatch",
+        )
+        return 1
+
     try:
-        # 优先使用 inotify
         monitor_with_inotify()
+        return 0
+    except DependencyError:
+        pass
     except KeyboardInterrupt:
         print("\nFileWatcher stopped by user")
         return 0
-    except Exception as e:
-        print(f"Error in inotify monitoring: {e}")
-        print("Falling back to fswatch...")
-        try:
-            monitor_with_fswatch()
-        except Exception as e2:
-            print(f"Error in fswatch monitoring: {e2}")
-            return 1
-    
-    return 0
+    except Exception as exc:
+        log_service_error("inotify 监控发生异常，尝试切换到 fswatch", details=str(exc))
+
+    if not fswatch_available:
+        log_service_error("已无法回退到 fswatch，请安装 inotify.adapters 或 fswatch")
+        return 1
+
+    try:
+        monitor_with_fswatch()
+        return 0
+    except DependencyError:
+        return 1
+    except Exception as exc:
+        log_service_error("fswatch 监控发生异常", details=str(exc))
+        return 1
 
 
 if __name__ == "__main__":

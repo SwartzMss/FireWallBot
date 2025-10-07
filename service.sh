@@ -12,6 +12,35 @@
 
 set -euo pipefail
 
+if [[ -t 1 ]]; then
+  COLOR_RED=$'\033[31m'
+  COLOR_GREEN=$'\033[32m'
+  COLOR_YELLOW=$'\033[33m'
+  COLOR_BLUE=$'\033[34m'
+  COLOR_MAGENTA=$'\033[35m'
+  COLOR_CYAN=$'\033[36m'
+  COLOR_RESET=$'\033[0m'
+else
+  COLOR_RED=''
+  COLOR_GREEN=''
+  COLOR_YELLOW=''
+  COLOR_BLUE=''
+  COLOR_MAGENTA=''
+  COLOR_CYAN=''
+  COLOR_RESET=''
+fi
+
+log_color() {
+  local color="$1"; shift
+  printf '%b%s%b\n' "${color}" "$*" "${COLOR_RESET}"
+}
+
+log_step() { log_color "${COLOR_CYAN}" "[STEP] $*"; }
+log_info() { log_color "${COLOR_BLUE}" "[INFO] $*"; }
+log_warn() { log_color "${COLOR_YELLOW}" "[WARN] $*" 1>&2; }
+log_ok() { log_color "${COLOR_GREEN}" "[ OK ] $*"; }
+log_error() { log_color "${COLOR_RED}" "[FAIL] $*" 1>&2; }
+
 THIS_FILE="${BASH_SOURCE[0]}"
 REPO_ROOT="$(cd -- "$(dirname -- "${THIS_FILE}")" >/dev/null 2>&1 && pwd)"
 MODULES_DIR="${REPO_ROOT}/scripts"
@@ -19,7 +48,7 @@ UNIT_DIR_DST="/etc/systemd/system"
 
 require_root() {
   if [[ ${EUID:-$(id -u)} -ne 0 ]]; then
-    echo "Please run as root (sudo)." >&2
+    log_error "需要 root 权限，请使用 sudo 执行。"
     exit 1
   fi
 }
@@ -55,6 +84,59 @@ module_unit_name() {
   local lower
   lower=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
   echo "firewallbot-${lower}.service"
+}
+
+module_requirements_file() {
+  local mod="$1"
+  echo "${MODULES_DIR}/${mod}/requirements.txt"
+}
+
+module_virtualenv_path() {
+  local mod="$1"
+  local lower
+  lower=$(echo "$mod" | tr '[:upper:]' '[:lower:]')
+  echo "${REPO_ROOT}/.venv/${lower}"
+}
+
+install_module_dependencies() {
+  local mod="$1"
+  local req venv pip_bin
+  req=$(module_requirements_file "$mod")
+  if [[ -f "$req" ]]; then
+    log_step "安装 ${mod} 依赖 (${req})"
+    if ! command -v python3 >/dev/null 2>&1; then
+      log_warn "系统未找到 python3，跳过 ${mod} 的依赖安装"
+      return
+    fi
+    venv=$(module_virtualenv_path "$mod")
+    if ! python3 -m venv --help >/dev/null 2>&1; then
+      log_error "缺少 python3-venv 模块，请先安装 python3-venv"
+      exit 1
+    fi
+    if [[ ! -d "$venv" ]]; then
+      log_step "创建虚拟环境 ${venv}"
+      python3 -m venv "$venv"
+    fi
+    pip_bin="${venv}/bin/pip"
+    if [[ ! -x "$pip_bin" ]]; then
+      log_error "虚拟环境缺少 pip: ${pip_bin}"
+      exit 1
+    fi
+    log_info "升级虚拟环境基础包"
+    "$pip_bin" install --upgrade pip setuptools wheel >/dev/null
+    log_info "安装 ${mod} 依赖集合"
+    "$pip_bin" install --upgrade -r "$req"
+  fi
+}
+
+check_service_status() {
+  local unit="$1"
+  if systemctl is-active --quiet "$unit"; then
+    log_ok "服务 ${unit} 已启动"
+  else
+    log_error "服务 ${unit} 未处于运行状态"
+    systemctl status "$unit" --no-pager --lines 15 || true
+  fi
 }
 
 module_profile_src() {
@@ -94,22 +176,28 @@ cmd_install() {
         unit=$(module_unit_name "$m")
         src=$(module_template "$m")
         dst="${UNIT_DIR_DST}/${unit}"
-        echo "Installing service ${m} -> ${unit}"
+        log_step "部署 systemd 服务 ${m} -> ${unit}"
+        install_module_dependencies "$m"
         tmp=$(mktemp)
         sed "s#@REPO@#${REPO_ROOT}#g" "$src" >"$tmp"
         install -m 0644 "$tmp" "$dst"
         rm -f "$tmp"
+        log_info "刷新 systemd 守护进程"
         systemctl daemon-reload
+        log_info "启用并启动 ${unit}"
         systemctl enable --now "$unit"
+        check_service_status "$unit"
         ;;
       profile)
         local src dest ts lower
         src=$(module_profile_src "$m")
         lower=$(echo "$m" | tr '[:upper:]' '[:lower:]')
         dest="/etc/profile.d/99-firewallbot-${lower}.sh"
-        echo "Installing profile hook ${m} -> ${dest}"
+        log_step "部署 profile 模块 ${m} -> ${dest}"
+        install_module_dependencies "$m"
         if [[ ! -f "$src" ]]; then
-          echo "Profile source not found: $src" >&2; continue
+          log_warn "未找到 profile 源文件：$src"
+          continue
         fi
         ts=$(date -u +'%Y-%m-%dT%H:%M:%SZ')
         cat >"$dest" <<EOF
@@ -145,7 +233,7 @@ if [[ -f "\${SRC}" ]]; then
 fi
 EOF
           chmod 0644 "$dest_brcd"
-          echo "[ok] Installed bashrc.d hook: $dest_brcd"
+          log_ok "已安装 bashrc.d 钩子：$dest_brcd"
         else
           # Append an annotated block into /etc/bash.bashrc
           local bashrc="/etc/bash.bashrc"
@@ -164,19 +252,19 @@ if [[ -f "\${SRC}" ]]; then
 fi
 ${marker_end}
 EOF
-            echo "[ok] Appended bashrc hook block for ${m} in ${bashrc}"
+            log_ok "已向 ${bashrc} 追加 ${m} 钩子"
           else
-            echo "[skip] bashrc hook block already present for ${m}"
+            log_info "检测到 ${bashrc} 已存在 ${m} 钩子，跳过"
           fi
         fi
         # Detection and hints
         if grep -q "/etc/profile.d" /etc/profile 2>/dev/null; then
-          echo "[hint] Login shells will source: /etc/profile -> /etc/profile.d/*.sh"
+          log_info "登录 Shell 会自动加载 /etc/profile.d/*.sh"
         else
-          echo "[hint] /etc/profile does not appear to source /etc/profile.d on this system"
+          log_warn "/etc/profile 似乎未加载 /etc/profile.d，需手动确认"
         fi
         if [[ -f /etc/bash.bashrc ]]; then
-          echo "[hint] Non-login interactive shells typically DO NOT source /etc/profile.d. Use 'bash -l' or open a login session."
+          log_info "非登录 Shell 通常不加载 /etc/profile.d，可使用 bash -l 测试"
         fi
         ;;
       *) echo "Skipping unknown module: $m" ;;
@@ -195,7 +283,7 @@ cmd_uninstall() {
         local unit dst
         unit=$(module_unit_name "$m")
         dst="${UNIT_DIR_DST}/${unit}"
-        echo "Uninstalling service ${m} (${unit})"
+        log_step "卸载 systemd 服务 ${m} (${unit})"
         systemctl disable --now "$unit" 2>/dev/null || true
         rm -f "$dst" || true
         ;;
@@ -204,7 +292,7 @@ cmd_uninstall() {
         lower=$(echo "$m" | tr '[:upper:]' '[:lower:]')
         dest="/etc/profile.d/99-firewallbot-${lower}.sh"
         dest_brcd="/etc/bash.bashrc.d/99-firewallbot-${lower}.sh"
-        echo "Removing profile hook ${m}"
+        log_step "移除 profile 模块 ${m}"
         rm -f "$dest" "$dest_brcd" || true
         bashrc="/etc/bash.bashrc"
         marker_begin="# >>> FireWallBot:${m} >>>"
@@ -212,7 +300,7 @@ cmd_uninstall() {
         if [[ -f "$bashrc" ]] && grep -q "$marker_begin" "$bashrc"; then
           # Delete the annotated block
           sed -i "/$marker_begin/,/$marker_end/d" "$bashrc" || true
-          echo "[ok] Removed bashrc hook block for ${m}"
+          log_ok "已移除 ${bashrc} 中的 ${m} 钩子"
         fi
         ;;
       *) echo "Skipping unknown module: $m" ;;
