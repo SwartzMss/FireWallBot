@@ -142,6 +142,16 @@ install_module_dependencies() {
   fi
 }
 
+remove_module_virtualenv() {
+  local mod="$1"
+  local venv
+  venv=$(module_virtualenv_path "$mod")
+  if [[ -d "$venv" ]]; then
+    log_step "删除虚拟环境 ${venv}"
+    rm -rf "$venv"
+  fi
+}
+
 check_service_status() {
   local unit="$1"
   if systemctl is-active --quiet "$unit"; then
@@ -299,6 +309,7 @@ cmd_uninstall() {
         log_step "卸载 systemd 服务 ${m} (${unit})"
         systemctl disable --now "$unit" 2>/dev/null || true
         rm -f "$dst" || true
+        remove_module_virtualenv "$m"
         ;;
       profile)
         local lower dest dest_brcd bashrc marker_begin marker_end
@@ -315,6 +326,7 @@ cmd_uninstall() {
           sed -i "/$marker_begin/,/$marker_end/d" "$bashrc" || true
           log_ok "已移除 ${bashrc} 中的 ${m} 钩子"
         fi
+        remove_module_virtualenv "$m"
         ;;
       *) echo "Skipping unknown module: $m" ;;
     esac
