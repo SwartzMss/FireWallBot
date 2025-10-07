@@ -158,10 +158,10 @@ def monitor_with_inotify() -> None:
     valid_dirs = []
     for watch_dir in WATCH_DIRS:
         if os.path.exists(watch_dir) and os.path.isdir(watch_dir):
-            valid_dirs.append(watch_dir)
+            valid_dirs.append(os.path.abspath(watch_dir))
         else:
             print(f"Warning: Directory {watch_dir} does not exist or is not a directory", file=sys.stderr)
-    
+
     if not valid_dirs:
         write_event(sys.stderr, {
             "ts": iso_local(),
@@ -172,13 +172,21 @@ def monitor_with_inotify() -> None:
     
     # 创建 inotify 监控器
     try:
-        i = inotify.adapters.InotifyTree(valid_dirs)
-    except Exception as e:
-        write_event(sys.stderr, {
-            "ts": iso_local(),
-            "kind": "error",
-            "message": f"Failed to create inotify watcher: {e}"
-        })
+        i = inotify.adapters.InotifyTree(valid_dirs[0])
+        for extra_dir in valid_dirs[1:]:
+            try:
+                i._load_tree(extra_dir)
+            except Exception as e:  # pylint: disable=broad-except
+                log_service_error(
+                    "额外监控目录初始化失败",
+                    directory=extra_dir,
+                    details=str(e),
+                )
+    except Exception as e:  # pylint: disable=broad-except
+        log_service_error(
+            "Failed to create inotify watcher",
+            details=str(e),
+        )
         return
     
     with LOG_FILE.open("a", encoding="utf-8") as handle:
