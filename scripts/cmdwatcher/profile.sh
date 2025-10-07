@@ -71,8 +71,11 @@ fwbot__maybe_session_start() {
   export FIREWALLBOT_SESSION_ID="${ts}-${PPID:-0}-${rnd}"
   export FIREWALLBOT_SESSION_STARTED=1
 
-  local epoch_iso user uid gid cwd host tty ip port
+  local epoch_iso user uid gid cwd host tty ip port tz_offset tz_name tz_json
   epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  tz_offset=$(date +%z)
+  tz_name=$(date +%Z)
+  tz_json=$(fwbot__json_escape "$tz_name")
   user=${USER:-$(id -un)}
   uid=${UID:-$(id -u)}
   gid=${GID:-$(id -g)}
@@ -84,8 +87,8 @@ fwbot__maybe_session_start() {
   else
     ip="local"; port=""
   fi
-  printf '{"type":"session_start","ts":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","ppid":%s,"pid":%s,"host":"%s"}\n' \
-    "$epoch_iso" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "${PPID:-0}" "$$" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+  printf '{"type":"session_start","ts":"%s","tz_offset":"%s","tz_name":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","ppid":%s,"pid":%s,"host":"%s"}\n' \
+    "$epoch_iso" "$tz_offset" "$tz_json" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "${PPID:-0}" "$$" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
 }
 
 fwbot__log_session_stop() {
@@ -98,8 +101,11 @@ fwbot__log_session_stop() {
     return 0
   fi
 
-  local epoch_iso user uid gid cwd host tty ip port
+  local epoch_iso user uid gid cwd host tty ip port tz_offset tz_name tz_json
   epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  tz_offset=$(date +%z)
+  tz_name=$(date +%Z)
+  tz_json=$(fwbot__json_escape "$tz_name")
   user=${USER:-$(id -un)}
   uid=${UID:-$(id -u)}
   gid=${GID:-$(id -g)}
@@ -112,8 +118,8 @@ fwbot__log_session_stop() {
     ip="local"; port=""
   fi
 
-  printf '{"type":"session_stop","ts":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"host":"%s"}\n' \
-    "$epoch_iso" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+  printf '{"type":"session_stop","ts":"%s","tz_offset":"%s","tz_name":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"host":"%s"}\n' \
+    "$epoch_iso" "$tz_offset" "$tz_json" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
 }
 
 fwbot__install_exit_trap() {
@@ -142,8 +148,11 @@ fwbot_log_last_command() {
     fwbot_log_last_command*|history\ *|history) __FWBOT_LOGGING=0; return 0 ;;
   esac
 
-  local epoch_iso user uid gid cwd host tty ip port
+  local epoch_iso user uid gid cwd host tty ip port tz_offset tz_name tz_json
   epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  tz_offset=$(date +%z)
+  tz_name=$(date +%Z)
+  tz_json=$(fwbot__json_escape "$tz_name")
   user=${USER:-$(id -un)}
   uid=${UID:-$(id -u)}
   gid=${GID:-$(id -g)}
@@ -157,11 +166,11 @@ fwbot_log_last_command() {
   fi
   local cmd_json; cmd_json=$(fwbot__json_escape "$cmd")
   if [[ -n "${FIREWALLBOT_SESSION_ID:-}" ]]; then
-    printf '{"type":"exec","ts":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
-      "$epoch_iso" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+    printf '{"type":"exec","ts":"%s","tz_offset":"%s","tz_name":"%s","sid":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
+      "$epoch_iso" "$tz_offset" "$tz_json" "$FIREWALLBOT_SESSION_ID" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
   else
-    printf '{"type":"exec","ts":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
-      "$epoch_iso" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
+    printf '{"type":"exec","ts":"%s","tz_offset":"%s","tz_name":"%s","user":"%s","uid":%s,"gid":%s,"ip":"%s","port":"%s","tty":"%s","cwd":"%s","rc":%s,"cmd":"%s","host":"%s"}\n' \
+      "$epoch_iso" "$tz_offset" "$tz_json" "$user" "$uid" "$gid" "$ip" "$port" "$tty" "$cwd" "$rc" "$cmd_json" "$host" >> "${_FWBOT_CMD_LOG_FILE}" 2>/dev/null || true
   fi
   FWBOT_LAST_CMD=''
   __FWBOT_LOGGING=0
