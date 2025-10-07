@@ -43,14 +43,29 @@ log_error() { log_color "${COLOR_RED}" "[FAIL] $*" 1>&2; }
 
 run_with_proxy() {
   local -a env_args=()
-  if [[ -n ${http_proxy:-} ]]; then
-    log_info "检测到 http_proxy=${http_proxy}"
-    env_args+=("http_proxy=${http_proxy}" "HTTP_PROXY=${http_proxy}")
+  local http_proxy_val=${http_proxy:-${HTTP_PROXY:-}}
+  local https_proxy_val=${https_proxy:-${HTTPS_PROXY:-}}
+
+  if [[ -z "$http_proxy_val" && -n ${SUDO_USER:-} ]]; then
+    http_proxy_val=$(sudo -Hiu "$SUDO_USER" env | awk -F= '/^(http_proxy|HTTP_PROXY)=/{print $2; exit}' || true)
   fi
-  if [[ -n ${https_proxy:-} ]]; then
-    log_info "检测到 https_proxy=${https_proxy}"
-    env_args+=("https_proxy=${https_proxy}" "HTTPS_PROXY=${https_proxy}")
+  if [[ -z "$https_proxy_val" && -n ${SUDO_USER:-} ]]; then
+    https_proxy_val=$(sudo -Hiu "$SUDO_USER" env | awk -F= '/^(https_proxy|HTTPS_PROXY)=/{print $2; exit}' || true)
   fi
+
+  if [[ -n "$http_proxy_val" ]]; then
+    log_info "检测到 http_proxy=${http_proxy_val}"
+    env_args+=("http_proxy=${http_proxy_val}" "HTTP_PROXY=${http_proxy_val}")
+  fi
+  if [[ -n "$https_proxy_val" ]]; then
+    log_info "检测到 https_proxy=${https_proxy_val}"
+    env_args+=("https_proxy=${https_proxy_val}" "HTTPS_PROXY=${https_proxy_val}")
+  fi
+
+  if (( ${#env_args[@]} == 0 )); then
+    log_info "未检测到代理环境变量"
+  fi
+
   env "${env_args[@]}" "$@"
 }
 
