@@ -1,0 +1,32 @@
+[Unit]
+Description=FireWallBot File System Watcher
+Documentation=https://github.com/SwartzMss/FireWallBot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory={{REPO_ROOT}}
+ExecStart={{REPO_ROOT}}/scripts/filewatcher/filewatcher.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+# 环境变量配置
+Environment=FIREWALLBOT_LOG_DIR={{LOG_DIR}}
+Environment=FIREWALLBOT_FILEWATCH_LOG={{LOG_DIR}}/filewatcher.jsonl
+Environment=FIREWALLBOT_WATCH_DIRS=/etc/,/root/,/usr/bin/,/usr/sbin/,/var/log/
+Environment=FIREWALLBOT_WATCH_EVENTS=IN_CREATE,IN_MODIFY,IN_DELETE,IN_MOVED_FROM,IN_MOVED_TO,IN_ATTRIB
+Environment=FIREWALLBOT_EXCLUDE_PATTERNS=*.tmp,*.log,*.swp,*.pid
+
+# 安全设置
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{LOG_DIR}}
+
+[Install]
+WantedBy=multi-user.target

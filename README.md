@@ -6,6 +6,7 @@ FireWallBot 是一个面向 Linux 主机的轻量化审计/观测工具集，通
 
 - **cmdwatcher** — 记录交互式 Bash 会话的命令轨迹（会话起止 + 每条命令）。详见 [README.md](scripts/cmdwatcher/README.md)。
 - **syswatcher** — 审计 CPU 高占用与新的网络连接，输出到 JSONL。详见 [README.md](scripts/syswatcher/README.md)。
+- **filewatcher** — 监控文件系统变化，记录文件创建、修改、删除等事件。详见 [README.md](scripts/filewatcher/README.md)。
 - **logkeeper** — 自动轮转 `log/*.jsonl`，压缩并保留历史归档。详见 [README.md](scripts/logkeeper/README.md)。
 
 ## 基本操作
