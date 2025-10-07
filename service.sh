@@ -156,7 +156,7 @@ install_module_dependencies() {
       exit 1
     fi
     log_info "升级虚拟环境基础包"
-    run_with_proxy "$pip_bin" install --upgrade pip setuptools wheel >/dev/null
+    run_with_proxy "$pip_bin" install --upgrade --quiet pip setuptools wheel
     log_info "安装 ${mod} 依赖集合"
     run_with_proxy "$pip_bin" install --upgrade -r "$req"
   fi
