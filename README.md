@@ -17,6 +17,13 @@ FireWallBot 是一个面向 Linux 主机的轻量化审计/观测工具集，通
 - 卸载模块（需 root）：`sudo bash ./service.sh uninstall [module]`
 - 默认日志目录：`log/`
 
+### 代理环境提示
+
+- 如果主机需经由 HTTP/HTTPS 代理访问外网（例如安装 Python 依赖），请在执行安装命令前让代理环境变量对 `sudo` 可见，例如：
+  - 临时方式：`export http_proxy=...; export https_proxy=...; sudo -E bash ./service.sh install filewatcher`
+  - 永久方式：在 `/root/.bashrc` 或 `/etc/environment` 内设置 `http_proxy`/`https_proxy`，或在 `sudo visudo` 中添加 `Defaults env_keep += "http_proxy https_proxy"`。
+  - 也可以直接在命令前显式传入：`sudo env "http_proxy=$http_proxy" "https_proxy=$https_proxy" bash ./service.sh install ...`
+
 ## 日志滚动
 
 - 推荐启用 **logkeeper** 服务：`sudo bash ./service.sh install logkeeper`。它会常驻监控 `log/*.jsonl`，单文件超过 20 MiB 即压缩为 `*.jsonl.gz` 并保留最近 10 个归档。若需其他策略，可自行编写 systemd/timer 或 logrotate 规则。
