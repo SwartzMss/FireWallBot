@@ -13,6 +13,7 @@ cmdwatcher
   - `session_start`：会话开始标记，字段含 `sid` 用于关联
   - `session_stop`：会话结束，附带退出码、最后工作目录等
   - `exec`：每条命令记录；若存在 `sid` 字段，与会话关联
+- `ts` 字段使用本地时区的 ISO8601 格式（如 `2025-10-07T08:37:44+08:00`）。
 - 所有事件同时记录本地时区信息（`tz_offset`、`tz_name`）。
 - 可通过 `FIREWALLBOT_LOG_DIR`/`FIREWALLBOT_CMD_LOG` 环境变量覆盖目录或文件名。
 - 默认忽略 shell 自启动的 `. "$HOME/.cargo/env"` 等噪声命令，可在 `profile.sh` 的 `fwbot__should_ignore_command` 中扩展模式。

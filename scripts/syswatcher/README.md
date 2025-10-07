@@ -16,8 +16,8 @@ syswatcher
   - `FIREWALLBOT_LOG_DIR` / `FIREWALLBOT_SYSWATCH_LOG`：自定义日志目录或文件。
 
 事件格式
-- CPU 告警：`{"kind":"cpu_high","pid":123,"cpu":34.5,"cwd":"/work","tz_offset":"+0800",...}`（若可读取 `/proc/<pid>` 会附带 `cwd`、`cmdline`、`exe`，并同时写入本地时区信息 `tz_offset` / `tz_name` / `ts_local`）。
-- 网络连接：`{"kind":"network_connection","remote_addr":"1.2.3.4","pid":234,...}`（同样尽量补充进程上下文与时区字段）。
+- CPU 告警：`{"kind":"cpu_high","pid":123,"cpu":34.5,"cwd":"/work",...}`（若可读取 `/proc/<pid>` 会附带 `cwd`、`cmdline`、`exe`；`ts` 已直接使用本地时区的 ISO8601）。
+- 网络连接：`{"kind":"network_connection","remote_addr":"1.2.3.4","pid":234,...}`（同样尽量补充进程上下文）。
 - 脚本启动/错误也会写入 `syswatcher_start` / `error` 事件便于排错。
 
 安装

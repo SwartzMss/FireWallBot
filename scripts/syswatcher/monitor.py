@@ -40,8 +40,9 @@ USERS_RE = re.compile(r"users:\(\(([^\)]+)\)\)")
 PROCESS_RE = re.compile(r"\"(?P<name>[^\"]+)\",pid=(?P<pid>\d+)")
 
 
-def iso_utc(ts: Optional[float] = None) -> str:
-    return _dt.datetime.utcfromtimestamp(ts or time.time()).replace(microsecond=0).isoformat() + "Z"
+def iso_local(ts: Optional[float] = None) -> str:
+    moment = _dt.datetime.fromtimestamp(ts or time.time(), tz=_dt.timezone.utc).astimezone()
+    return moment.replace(microsecond=0).isoformat()
 
 
 def write_event(handle, event: Dict) -> None:
@@ -53,15 +54,6 @@ def write_event(handle, event: Dict) -> None:
 
 def run_command(cmd: Sequence[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, check=False)
-
-
-def tz_context(ts: Optional[float] = None) -> Dict[str, Optional[str]]:
-    moment = _dt.datetime.fromtimestamp(ts or time.time(), tz=_dt.timezone.utc).astimezone()
-    return {
-        "ts_local": moment.isoformat(),
-        "tz_offset": moment.strftime("%z"),
-        "tz_name": moment.tzname(),
-    }
 
 
 def proc_context(pid: int) -> Dict[str, Optional[str]]:
@@ -199,19 +191,14 @@ def main() -> int:
     cooldown_cleanup_interval = max(CPU_COOLDOWN * 3, POLL_INTERVAL * 6)
     last_cleanup = time.time()
     with LOG_FILE.open("a", encoding="utf-8") as handle:
-        start_info = {"ts": iso_utc(), "kind": "syswatcher_start", "poll_interval": POLL_INTERVAL}
-        start_info.update({k: v for k, v in tz_context().items() if v})
-        write_event(handle, start_info)
+        write_event(handle, {"ts": iso_local(), "kind": "syswatcher_start", "poll_interval": POLL_INTERVAL})
         while True:
             loop_started = time.time()
-            ts = iso_utc(loop_started)
-            tz_info = {k: v for k, v in tz_context(loop_started).items() if v}
+            ts = iso_local(loop_started)
             try:
                 cpu_findings = sample_cpu(CPU_THRESHOLD)
             except Exception as exc:  # noqa: BLE001
-                err_event = {"ts": ts, "kind": "error", "source": "cpu", "message": str(exc)}
-                err_event.update(tz_info)
-                write_event(handle, err_event)
+                write_event(handle, {"ts": ts, "kind": "error", "source": "cpu", "message": str(exc)})
                 cpu_findings = []
             active_keys: Set[Tuple[int, str]] = set()
             for item in cpu_findings:
@@ -237,7 +224,6 @@ def main() -> int:
                     event["cmdline"] = context["cmdline"]
                 if context["exe"]:
                     event["exe"] = context["exe"]
-                event.update(tz_info)
                 write_event(handle, event)
                 last_cpu_alert[key] = loop_started
             if loop_started - last_cleanup >= cooldown_cleanup_interval:
@@ -248,9 +234,7 @@ def main() -> int:
             try:
                 conn_findings = sample_connections()
             except Exception as exc:  # noqa: BLE001
-                err_event = {"ts": ts, "kind": "error", "source": "network", "message": str(exc)}
-                err_event.update(tz_info)
-                write_event(handle, err_event)
+                write_event(handle, {"ts": ts, "kind": "error", "source": "network", "message": str(exc)})
                 conn_findings = []
             current_keys: Set[Tuple[str, str, str, str, str, Optional[int]]] = set()
             for conn in conn_findings:
@@ -286,7 +270,6 @@ def main() -> int:
                         event["exe"] = context["exe"]
                 if conn["process"]:
                     event["process"] = conn["process"]
-                event.update(tz_info)
                 write_event(handle, event)
             known_connections = current_keys
             elapsed = time.time() - loop_started

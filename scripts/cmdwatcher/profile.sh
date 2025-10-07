@@ -72,7 +72,7 @@ fwbot__maybe_session_start() {
   export FIREWALLBOT_SESSION_STARTED=1
 
   local epoch_iso user uid gid cwd host tty ip port tz_offset tz_name tz_json
-  epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  epoch_iso=$(date +%Y-%m-%dT%H:%M:%S%:z)
   tz_offset=$(date +%z)
   tz_name=$(date +%Z)
   tz_json=$(fwbot__json_escape "$tz_name")
@@ -102,7 +102,7 @@ fwbot__log_session_stop() {
   fi
 
   local epoch_iso user uid gid cwd host tty ip port tz_offset tz_name tz_json
-  epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  epoch_iso=$(date +%Y-%m-%dT%H:%M:%S%:z)
   tz_offset=$(date +%z)
   tz_name=$(date +%Z)
   tz_json=$(fwbot__json_escape "$tz_name")
@@ -149,7 +149,7 @@ fwbot_log_last_command() {
   esac
 
   local epoch_iso user uid gid cwd host tty ip port tz_offset tz_name tz_json
-  epoch_iso=$(date -u -Iseconds | sed 's/+00:00/Z/')
+  epoch_iso=$(date +%Y-%m-%dT%H:%M:%S%:z)
   tz_offset=$(date +%z)
   tz_name=$(date +%Z)
   tz_json=$(fwbot__json_escape "$tz_name")
