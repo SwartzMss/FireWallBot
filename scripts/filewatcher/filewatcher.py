@@ -146,6 +146,7 @@ def monitor_with_inotify() -> None:
     """使用 inotify 监控文件系统"""
     try:
         import inotify.adapters
+        import inotify.constants  # type: ignore
     except ImportError as exc:
         log_service_error(
             "inotify module not available. Install with: pip install inotify",
@@ -153,7 +154,7 @@ def monitor_with_inotify() -> None:
             details=str(exc),
         )
         raise DependencyError("inotify.adapters not available")
-    
+
     # 验证监控目录
     valid_dirs = []
     for watch_dir in WATCH_DIRS:
@@ -170,9 +171,30 @@ def monitor_with_inotify() -> None:
         })
         return
     
+    # 解析事件掩码
+    event_mask = 0
+    missing_events: List[str] = []
+    for name in WATCH_EVENTS:
+        key = name.strip().upper()
+        if not key:
+            continue
+        if hasattr(inotify.constants, key):
+            event_mask |= getattr(inotify.constants, key)
+        else:
+            missing_events.append(key)
+
+    if missing_events:
+        log_service_error(
+            "未识别的 inotify 事件名称，将忽略",
+            unknown_events=missing_events,
+        )
+
+    if event_mask == 0:
+        event_mask = inotify.constants.IN_ALL_EVENTS
+
     # 创建 inotify 监控器
     try:
-        i = inotify.adapters.InotifyTree(valid_dirs[0])
+        i = inotify.adapters.InotifyTree(valid_dirs[0], mask=event_mask)
         for extra_dir in valid_dirs[1:]:
             try:
                 i._load_tree(extra_dir)
@@ -216,10 +238,22 @@ def monitor_with_inotify() -> None:
                 file_info = get_file_info(full_path)
                 
                 # 构建事件记录
+                primary_type = type_names[0] if type_names else "UNKNOWN"
+                if primary_type not in WATCH_EVENTS and not {
+                    "IN_MOVED_FROM",
+                    "IN_MOVED_TO",
+                    "IN_CLOSE_WRITE",
+                    "IN_CLOSE_NOWRITE",
+                    "IN_DELETE_SELF",
+                    "IN_MOVE_SELF",
+                }.intersection(type_names):
+                    # 跳过未订阅的事件，减少噪音
+                    continue
+
                 event_record = {
                     "ts": iso_local(),
                     "kind": "file_event",
-                    "event_type": type_names[0] if type_names else "UNKNOWN",
+                    "event_type": primary_type,
                     "path": full_path,
                     "watch_path": watch_path,
                     "filename": filename,
