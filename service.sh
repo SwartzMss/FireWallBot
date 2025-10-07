@@ -41,6 +41,19 @@ log_warn() { log_color "${COLOR_YELLOW}" "[WARN] $*" 1>&2; }
 log_ok() { log_color "${COLOR_GREEN}" "[ OK ] $*"; }
 log_error() { log_color "${COLOR_RED}" "[FAIL] $*" 1>&2; }
 
+run_with_proxy() {
+  local -a env_args=()
+  if [[ -n ${http_proxy:-} ]]; then
+    log_info "检测到 http_proxy=${http_proxy}"
+    env_args+=("http_proxy=${http_proxy}" "HTTP_PROXY=${http_proxy}")
+  fi
+  if [[ -n ${https_proxy:-} ]]; then
+    log_info "检测到 https_proxy=${https_proxy}"
+    env_args+=("https_proxy=${https_proxy}" "HTTPS_PROXY=${https_proxy}")
+  fi
+  env "${env_args[@]}" "$@"
+}
+
 THIS_FILE="${BASH_SOURCE[0]}"
 REPO_ROOT="$(cd -- "$(dirname -- "${THIS_FILE}")" >/dev/null 2>&1 && pwd)"
 MODULES_DIR="${REPO_ROOT}/scripts"
@@ -123,9 +136,9 @@ install_module_dependencies() {
       exit 1
     fi
     log_info "升级虚拟环境基础包"
-    "$pip_bin" install --upgrade pip setuptools wheel >/dev/null
+    run_with_proxy "$pip_bin" install --upgrade pip setuptools wheel >/dev/null
     log_info "安装 ${mod} 依赖集合"
-    "$pip_bin" install --upgrade -r "$req"
+    run_with_proxy "$pip_bin" install --upgrade -r "$req"
   fi
 }
 
