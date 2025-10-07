@@ -45,12 +45,17 @@ run_with_proxy() {
   local -a env_args=()
   local http_proxy_val=${http_proxy:-${HTTP_PROXY:-}}
   local https_proxy_val=${https_proxy:-${HTTPS_PROXY:-}}
+  local user_env=""
 
-  if [[ -z "$http_proxy_val" && -n ${SUDO_USER:-} ]]; then
-    http_proxy_val=$(sudo -Hiu "$SUDO_USER" env | awk -F= '/^(http_proxy|HTTP_PROXY)=/{print $2; exit}' || true)
+  if [[ -n ${SUDO_USER:-} ]]; then
+    user_env=$(sudo -Hiu "$SUDO_USER" bash -lc 'source ~/.bashrc >/dev/null 2>&1 || true; env' 2>/dev/null || true)
   fi
-  if [[ -z "$https_proxy_val" && -n ${SUDO_USER:-} ]]; then
-    https_proxy_val=$(sudo -Hiu "$SUDO_USER" env | awk -F= '/^(https_proxy|HTTPS_PROXY)=/{print $2; exit}' || true)
+
+  if [[ -z "$http_proxy_val" && -n "$user_env" ]]; then
+    http_proxy_val=$(printf '%s\n' "$user_env" | awk -F= '/^(http_proxy|HTTP_PROXY)=/{print $2; exit}')
+  fi
+  if [[ -z "$https_proxy_val" && -n "$user_env" ]]; then
+    https_proxy_val=$(printf '%s\n' "$user_env" | awk -F= '/^(https_proxy|HTTPS_PROXY)=/{print $2; exit}')
   fi
 
   if [[ -n "$http_proxy_val" ]]; then
